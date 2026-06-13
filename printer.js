@@ -65,8 +65,6 @@ function formatDate(iso) {
   }).replace(".", ":");
 }
 
-// ─── Konversi string ESC/POS → Buffer ────────────────────────────────────────
-// (binary encoding agar ESC bytes tidak corrupt)
 function b(str) {
   return Buffer.from(str, "binary");
 }
@@ -75,34 +73,30 @@ function b(str) {
 async function buildReceipt(trx, printerType) {
   const isTop = printerType === "top";
 
+  // TOP  → hanya FOOD
+  // BOTTOM → semua item
   const items = isTop
     ? trx.details.filter((d) => d.menu?.menu_type === "FOOD")
     : trx.details;
 
   if (!items.length) return null;
 
-  // Fetch logo (di-cache setelah pertama kali)
   const logoBytes = await getLogoEscPos();
 
-  // Kumpulkan semua bagian sebagai array Buffer
   const parts = [];
-  const t = (str) => parts.push(b(str));   // teks / ESC command
-  const r = (buf) => parts.push(buf);      // raw Buffer (logo)
+  const t = (str) => parts.push(b(str));
+  const r = (buf) => parts.push(buf);
 
   t(CMD.INIT);
 
-  // ══════════════════════════════════════════════
-  // LOGO
-  // ══════════════════════════════════════════════
+  // ── LOGO ──────────────────────────────────────────────────────────────────
   if (logoBytes) {
     t(CMD.ALIGN_CENTER);
     r(logoBytes);
-    t("\n");                    // jarak setelah logo
+    t("\n");
   }
 
-  // ══════════════════════════════════════════════
-  // NAMA CAFE & ALAMAT
-  // ══════════════════════════════════════════════
+  // ── NAMA CAFE & ALAMAT ────────────────────────────────────────────────────
   t(CMD.ALIGN_CENTER);
   t(CMD.BOLD_ON);
   t(CMD.DOUBLE_HEIGHT_ON);
@@ -116,9 +110,18 @@ async function buildReceipt(trx, printerType) {
 
   t("\n");
 
-  // ══════════════════════════════════════════════
-  // INFO TRANSAKSI
-  // ══════════════════════════════════════════════
+  // ── LABEL PESANAN PENDING ─────────────────────────────────────────────────
+  if (trx.is_pending_detail_print) {
+    t(CMD.ALIGN_CENTER);
+    t(CMD.BOLD_ON);
+    t(CMD.DOUBLE_HEIGHT_ON);
+    t("PESANAN PENDING\n");
+    t(CMD.DOUBLE_HEIGHT_OFF);
+    t(CMD.BOLD_OFF);
+    t("\n");
+  }
+
+  // ── INFO TRANSAKSI ────────────────────────────────────────────────────────
   t(CMD.ALIGN_LEFT);
   t(LINE + "\n");
 
@@ -131,6 +134,7 @@ async function buildReceipt(trx, printerType) {
   t(infoRow("Meja", trx.table?.name || "-") + "\n");
   t(infoRow("Pelanggan", trx.cust_name || "-") + "\n");
 
+  // Label seksi khusus printer atas (FOOD)
   if (isTop) {
     t(DASH + "\n");
     t(CMD.ALIGN_CENTER);
@@ -142,17 +146,13 @@ async function buildReceipt(trx, printerType) {
 
   t(LINE + "\n");
 
-  // ══════════════════════════════════════════════
-  // HEADER KOLOM
-  // ══════════════════════════════════════════════
+  // ── HEADER KOLOM ──────────────────────────────────────────────────────────
   t(CMD.BOLD_ON);
   t(row("MENU", "HARGA") + "\n");
   t(CMD.BOLD_OFF);
   t(DASH + "\n");
 
-  // ══════════════════════════════════════════════
-  // ITEM LIST
-  // ══════════════════════════════════════════════
+  // ── ITEM LIST ─────────────────────────────────────────────────────────────
   let subtotal = 0;
 
   for (const item of items) {
@@ -178,19 +178,27 @@ async function buildReceipt(trx, printerType) {
 
   t(DASH + "\n");
 
-  // ══════════════════════════════════════════════
-  // TOTAL
-  // ══════════════════════════════════════════════
+  // ── TOTAL ─────────────────────────────────────────────────────────────────
   if (isTop) {
+    // Printer atas: total makanan saja
     t(CMD.BOLD_ON);
-    t(row("TOTAL MINUMAN", formatRp(subtotal)) + "\n");
+    t(row("TOTAL MAKANAN", formatRp(subtotal)) + "\n");
     t(CMD.BOLD_OFF);
 
+  } else if (trx.is_pending_detail_print) {
+    // Printer bawah, mode pending: hanya total item (belum final)
+    t(LINE + "\n");
+    t(CMD.BOLD_ON);
+    t(CMD.DOUBLE_HEIGHT_ON);
+    t(row("TOTAL ITEM", formatRp(subtotal)) + "\n");
+    t(CMD.DOUBLE_HEIGHT_OFF);
+    t(CMD.BOLD_OFF);
+    t(LINE + "\n");
+
   } else {
+    // Printer bawah, transaksi final: subtotal + PPN + total + pembayaran
     t(row("Subtotal", formatRp(trx.price)) + "\n");
-
     t(row("PPN", formatRp(trx.fee || 0)) + "\n");
-
     t(LINE + "\n");
     t(CMD.BOLD_ON);
     t(CMD.DOUBLE_HEIGHT_ON);
@@ -210,9 +218,7 @@ async function buildReceipt(trx, printerType) {
     t(row("Status", trx.status === "success" ? "LUNAS" : trx.status.toUpperCase()) + "\n");
   }
 
-  // ══════════════════════════════════════════════
-  // FOOTER
-  // ══════════════════════════════════════════════
+  // ── FOOTER ────────────────────────────────────────────────────────────────
   t("\n");
   t(DASH + "\n");
   t(CMD.ALIGN_CENTER);
@@ -243,7 +249,6 @@ function sendToPrinter(ip, data) {
     client.setTimeout(PRINTER_TIMEOUT_MS);
 
     client.connect(PRINTER_PORT, ip, () => {
-      // Kirim Buffer langsung (bukan string) agar data binary logo tidak corrupt
       client.write(data, () => {
         setTimeout(() => done({ success: true, message: `Print sent to ${ip}` }), 500);
       });

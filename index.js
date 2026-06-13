@@ -5,24 +5,57 @@ const cors = require("cors");
 
 const app = express();
 app.use(express.json());
-app.use(
-  cors({
-    origin: "https://dashboard-cafe.arlettaluxury.com",
-  })
-)
+app.use(cors({
+  origin: "https://dashboard-cafe.arlettaluxury.com",
+}));
 
-// ─── Validation helper ────────────────────────────────────────────────────────
+// ─── Normalize & Validate ─────────────────────────────────────────────────────
+
+/**
+ * Normalisasi 3 format input yang mungkin masuk:
+ *
+ * Format A — transaksi final (format asli):
+ *   { id, unique_code, details: [...], cafe, table, ... }
+ *
+ * Format B — single detail item (dari endpoint detail):
+ *   { id, transaction_id, menu, transaction: { cafe, table, ... } }
+ *
+ * Format C — array detail items:
+ *   [{ transaction_id, menu, transaction: {...} }, ...]
+ */
 function normalizeTrx(body) {
+  // Format C: array of detail items
   if (Array.isArray(body) && body.length > 0 && body[0].transaction && !body[0].details) {
     const trx = { ...body[0].transaction };
-    trx.details = body;
-    return trx;
-  } else if (body && body.transaction && body.transaction_id && !body.details) {
-    const trx = { ...body.transaction };
-    trx.details = [body];
+    trx.details = body.map(normalizeDetailItem);
+    trx.is_pending_detail_print = true;
     return trx;
   }
+
+  // Format B: single detail item
+  if (body && body.transaction && body.transaction_id && !body.details) {
+    const trx = { ...body.transaction };
+    trx.details = [normalizeDetailItem(body)];
+    trx.is_pending_detail_print = true;
+    return trx;
+  }
+
+  // Format A: sudah lengkap, pastikan details punya field menu yang benar
+  if (body && body.details) {
+    body.details = body.details.map(normalizeDetailItem);
+  }
+
   return body;
+}
+
+/**
+ * Pastikan setiap item di details punya struktur menu yang konsisten.
+ * Format B/C kadang punya `menu` di root item, bukan di dalam detail.
+ */
+function normalizeDetailItem(item) {
+  // Sudah punya menu → tidak perlu apa-apa
+  if (item.menu) return item;
+  return item;
 }
 
 function validateTrx(trx) {
@@ -42,7 +75,6 @@ app.post("/print", async (req, res) => {
 
   const results = {};
 
-  // Build receipt kedua printer secara paralel
   const [topReceipt, bottomReceipt] = await Promise.all([
     buildReceipt(trx, "top"),
     buildReceipt(trx, "bottom"),
@@ -52,14 +84,14 @@ app.post("/print", async (req, res) => {
     console.log(`[PRINT] TOP    → ${PRINTERS.top.ip}`);
     results.top = await sendToPrinter(PRINTERS.top.ip, topReceipt);
   } else {
-    results.top = { success: false, message: "Tidak ada item BEVERAGE." };
+    results.top = { success: true, message: "Dilewati: tidak ada item FOOD pada transaksi ini." };
   }
 
   if (bottomReceipt) {
     console.log(`[PRINT] BOTTOM → ${PRINTERS.bottom.ip}`);
     results.bottom = await sendToPrinter(PRINTERS.bottom.ip, bottomReceipt);
   } else {
-    results.bottom = { success: false, message: "Tidak ada item untuk dicetak." };
+    results.bottom = { success: true, message: "Dilewati: tidak ada item untuk dicetak." };
   }
 
   const allSuccess = results.top.success && results.bottom.success;
@@ -72,8 +104,8 @@ app.post("/print", async (req, res) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST /print/top      →  Hanya printer atas (BEVERAGE)
-// POST /print/bottom   →  Hanya printer bawah (semua menu)
+// POST /print/top    →  Hanya printer atas (FOOD)
+// POST /print/bottom →  Hanya printer bawah (semua menu)
 // ─────────────────────────────────────────────────────────────────────────────
 app.post("/print/:target", async (req, res) => {
   const { target } = req.params;
@@ -95,7 +127,7 @@ app.post("/print/:target", async (req, res) => {
     return res.status(200).json({
       success: false,
       message: target === "top"
-        ? "Tidak ada item BEVERAGE untuk dicetak."
+        ? "Tidak ada item FOOD untuk dicetak."
         : "Tidak ada item untuk dicetak.",
     });
   }
@@ -121,7 +153,7 @@ app.get("/health", (req, res) => {
     status: "ok",
     server: "Print Server",
     printers: {
-      top:    PRINTERS.top,
+      top: PRINTERS.top,
       bottom: PRINTERS.bottom,
     },
     timestamp: new Date().toISOString(),
@@ -131,11 +163,11 @@ app.get("/health", (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`\n🖨️  Print Server running on http://localhost:${PORT}`);
-  console.log(`   TOP    → ${PRINTERS.top.ip}  (BEVERAGE only)`);
+  console.log(`   TOP    → ${PRINTERS.top.ip}  (FOOD only)`);
   console.log(`   BOTTOM → ${PRINTERS.bottom.ip}  (All items)`);
   console.log(`\nEndpoints:`);
   console.log(`   POST /print          → kedua printer`);
-  console.log(`   POST /print/top      → printer atas (beverage)`);
+  console.log(`   POST /print/top      → printer atas (food)`);
   console.log(`   POST /print/bottom   → printer bawah (semua menu)`);
   console.log(`   GET  /health         → status server\n`);
 });
