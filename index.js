@@ -1,9 +1,15 @@
 const express = require("express");
 const { PRINTERS, PORT } = require("./config");
 const { buildReceipt, sendToPrinter } = require("./printer");
+const cors = require("cors");
 
 const app = express();
 app.use(express.json());
+app.use(
+  cors({
+    origin: "https://dashboard-cafe.arlettaluxury.com",
+  })
+)
 
 // ─── Validation helper ────────────────────────────────────────────────────────
 function validateTrx(trx) {
