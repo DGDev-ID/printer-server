@@ -12,6 +12,19 @@ app.use(
 )
 
 // ─── Validation helper ────────────────────────────────────────────────────────
+function normalizeTrx(body) {
+  if (Array.isArray(body) && body.length > 0 && body[0].transaction && !body[0].details) {
+    const trx = { ...body[0].transaction };
+    trx.details = body;
+    return trx;
+  } else if (body && body.transaction && body.transaction_id && !body.details) {
+    const trx = { ...body.transaction };
+    trx.details = [body];
+    return trx;
+  }
+  return body;
+}
+
 function validateTrx(trx) {
   if (!trx || !trx.id || !trx.details || !Array.isArray(trx.details)) {
     return "Invalid transaction data. Pastikan field id dan details ada.";
@@ -23,10 +36,10 @@ function validateTrx(trx) {
 // POST /print  →  Kedua printer sekaligus
 // ─────────────────────────────────────────────────────────────────────────────
 app.post("/print", async (req, res) => {
-  const err = validateTrx(req.body);
+  const trx = normalizeTrx(req.body);
+  const err = validateTrx(trx);
   if (err) return res.status(400).json({ success: false, message: err });
 
-  const trx     = req.body;
   const results = {};
 
   // Build receipt kedua printer secara paralel
@@ -72,10 +85,10 @@ app.post("/print/:target", async (req, res) => {
     });
   }
 
-  const err = validateTrx(req.body);
+  const trx = normalizeTrx(req.body);
+  const err = validateTrx(trx);
   if (err) return res.status(400).json({ success: false, message: err });
 
-  const trx     = req.body;
   const receipt = await buildReceipt(trx, target);
 
   if (!receipt) {
