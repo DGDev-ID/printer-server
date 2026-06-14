@@ -158,7 +158,7 @@ async function buildReceipt(trx, printerType) {
   for (const item of items) {
     const name      = item.menu?.name || "Menu";
     const qty       = item.amount;
-    const price     = parseFloat(item.price);
+    const price     = parseFloat(item.menu?.price);
     const itemTotal = qty * price;
     subtotal += itemTotal;
 
@@ -206,6 +206,14 @@ async function buildReceipt(trx, printerType) {
     // Printer bawah, transaksi final: subtotal + PPN + total + pembayaran
     t(row("Subtotal",      formatRp(trx.price))     + "\n");
     t(row("PPN",           formatRp(trx.fee || 0))  + "\n");
+    if (trx.promo_id) {
+      const TOTAL_PRICE_WITH_DISCOUNT = parseFloat(trx.total_price);
+      const TOTAL_PRICE_WITHOUT_DISCOUNT = parseFloat(trx.price) + parseFloat(trx.fee || 0);
+      if (TOTAL_PRICE_WITH_DISCOUNT !== TOTAL_PRICE_WITHOUT_DISCOUNT) {
+        const discountAmount = TOTAL_PRICE_WITHOUT_DISCOUNT - TOTAL_PRICE_WITH_DISCOUNT;
+        t(row("Discount", `- ${formatRp(discountAmount)}`) + "\n");
+      }
+    }
     t(LINE + "\n");
     t(CMD.BOLD_ON);
     t(CMD.DOUBLE_HEIGHT_ON);
