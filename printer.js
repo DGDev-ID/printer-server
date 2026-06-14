@@ -129,10 +129,10 @@ async function buildReceipt(trx, printerType) {
     ? trx.unique_code.slice(-16)
     : trx.unique_code;
 
-  t(infoRow("No", noTrx) + "\n");
-  t(infoRow("Tanggal", formatDate(trx.created_at)) + "\n");
-  t(infoRow("Meja", trx.table?.name || "-") + "\n");
-  t(infoRow("Pelanggan", trx.cust_name || "-") + "\n");
+  t(infoRow("No",        noTrx)                      + "\n");
+  t(infoRow("Tanggal",   formatDate(trx.created_at))  + "\n");
+  t(infoRow("Meja",      trx.table?.name || "-")      + "\n");
+  t(infoRow("Pelanggan", trx.cust_name || "-")        + "\n");
 
   // Label seksi khusus printer atas (FOOD)
   if (isTop) {
@@ -156,9 +156,9 @@ async function buildReceipt(trx, printerType) {
   let subtotal = 0;
 
   for (const item of items) {
-    const name = item.menu?.name || "Menu";
-    const qty = item.amount;
-    const price = parseFloat(item.price);
+    const name      = item.menu?.name || "Menu";
+    const qty       = item.amount;
+    const price     = parseFloat(item.price);
     const itemTotal = qty * price;
     subtotal += itemTotal;
 
@@ -169,7 +169,14 @@ async function buildReceipt(trx, printerType) {
     t(row(`  ${qty} x ${formatRp(price)}`, formatRp(itemTotal)) + "\n");
 
     if (item.selected_variants?.length) {
-      for (const v of item.selected_variants) t(`  + ${v.name}\n`);
+      for (const v of item.selected_variants) {
+        // Format baru: { variant_name, material_name } → "BEANS: SIGN BEANS"
+        // Format lama: { name }                        → "Nama Variant"
+        const label = v.material_name && v.variant_name
+          ? `${v.material_name}: ${v.variant_name}`
+          : (v.name || '');
+        if (label) t(`  + ${label}\n`);
+      }
     }
     if (item.description) {
       for (const l of wrap(`  Catatan: ${item.description}`, W)) t(l + "\n");
@@ -197,8 +204,8 @@ async function buildReceipt(trx, printerType) {
 
   } else {
     // Printer bawah, transaksi final: subtotal + PPN + total + pembayaran
-    t(row("Subtotal", formatRp(trx.price)) + "\n");
-    t(row("PPN", formatRp(trx.fee || 0)) + "\n");
+    t(row("Subtotal",      formatRp(trx.price))     + "\n");
+    t(row("PPN",           formatRp(trx.fee || 0))  + "\n");
     t(LINE + "\n");
     t(CMD.BOLD_ON);
     t(CMD.DOUBLE_HEIGHT_ON);
@@ -209,9 +216,9 @@ async function buildReceipt(trx, printerType) {
 
     const payMap = {
       manual: "Tunai / Manual",
-      cash: "Tunai",
-      qris: "QRIS",
-      debit: "Kartu Debit",
+      cash:   "Tunai",
+      qris:   "QRIS",
+      debit:  "Kartu Debit",
       credit: "Kartu Kredit",
     };
     t(row("Pembayaran", payMap[trx.payment_type] || trx.payment_type) + "\n");
@@ -255,7 +262,7 @@ function sendToPrinter(ip, data) {
     });
 
     client.on("timeout", () => done({ success: false, message: `Timeout connecting to ${ip}` }));
-    client.on("error", (e) => done({ success: false, message: `Error on ${ip}: ${e.message}` }));
+    client.on("error",   (e) => done({ success: false, message: `Error on ${ip}: ${e.message}` }));
   });
 }
 
