@@ -90,6 +90,7 @@ app.post("/print", async (req, res) => {
   if (bottomReceipt) {
     console.log(`[PRINT] BOTTOM → ${PRINTERS.bottom.ip}`);
     results.bottom = await sendToPrinter(PRINTERS.bottom.ip, bottomReceipt);
+    await sendToPrinter(PRINTERS.bottom.ip, bottomReceipt);
   } else {
     results.bottom = { success: true, message: "Dilewati: tidak ada item untuk dicetak." };
   }
