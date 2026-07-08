@@ -134,6 +134,10 @@ async function buildReceipt(trx, printerType) {
   t(infoRow("Meja",      trx.table?.name || "-")      + "\n");
   t(infoRow("Pelanggan", trx.cust_name || "-")        + "\n");
 
+  if(trx.payment_method) {
+    t(infoRow("Pay", trx.payment_method || "-")        + "\n");
+  }
+
   // Label seksi khusus printer atas (FOOD)
   if (isTop) {
     t(DASH + "\n");
